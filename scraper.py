@@ -51,8 +51,8 @@ def _fetch_shopify_site(site: dict) -> list[dict]:
                 }
                 for p in r.json().get("products", [])
             ]
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("Could not fetch Shopify JSON for %s: %s", site["name"], e)
     try:
         return _scrape_shopify_html(site)
     except Exception as e:
@@ -93,7 +93,7 @@ def _fetch_homepage_site(site: dict) -> list[dict]:
         products = []
         for a in soup.find_all("a", href=True):
             href = a["href"].split("?")[0].rstrip("/")
-            if not href.startswith("/") or href == "":
+            if not href.startswith("/"):
                 continue
             if href in seen:
                 continue

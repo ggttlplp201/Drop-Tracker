@@ -1,4 +1,7 @@
+import os
 from unittest.mock import patch
+
+os.environ.setdefault("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/test")
 
 from notifier import notify, send_discord
 
@@ -7,7 +10,7 @@ PRODUCT = {
     "handle": "silver-ring",
     "price": "250.00",
     "image_url": "https://cdn.shopify.com/image.jpg",
-    "url": "https://www.chromhearts.com/products/silver-ring",
+    "url": "https://www.chromehearts.com/products/silver-ring",
     "site": "Chrome Hearts",
 }
 
