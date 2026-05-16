@@ -87,12 +87,17 @@ def test_homepage_site_returns_empty_on_failure():
 
 
 def test_fetch_all_products_covers_both_sites():
-    mock_shopify = _mock_shopify_response([SAMPLE_PRODUCT])
+    shopify_responses = [_mock_shopify_response([SAMPLE_PRODUCT]) for _ in SHOPIFY_SITES]
     html = '<a href="/hoodie">Hoodie</a>'
-    mock_homepage = MagicMock()
-    mock_homepage.text = html
-    with patch("scraper.requests.get", side_effect=[mock_shopify, mock_homepage]):
+    homepage_responses = []
+    for _ in HOMEPAGE_SITES:
+        m = MagicMock()
+        m.text = html
+        homepage_responses.append(m)
+    with patch("scraper.requests.get", side_effect=shopify_responses + homepage_responses):
         products = fetch_all_products()
     sites = {p["site"] for p in products}
-    assert "Anti Promo" in sites
-    assert "Chrome Hearts" in sites
+    for site in SHOPIFY_SITES:
+        assert site["name"] in sites
+    for site in HOMEPAGE_SITES:
+        assert site["name"] in sites

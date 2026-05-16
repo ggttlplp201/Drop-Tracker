@@ -14,6 +14,12 @@ SHOPIFY_SITES = [
         "fallback_url": "https://antipromo.com/collections/all",
         "base_url": "https://antipromo.com",
     },
+    {
+        "name": "Lukes",
+        "shopify_url": "https://lukes.store/collections/newest-items/products.json",
+        "fallback_url": "https://lukes.store/collections/newest-items?usf_take=56",
+        "base_url": "https://lukes.store",
+    },
 ]
 
 # Homepage-monitored sites: new drops appear as new links on the homepage

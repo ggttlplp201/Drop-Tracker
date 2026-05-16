@@ -19,13 +19,21 @@ POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "300"))
 def run_once() -> list[dict]:
     products = fetch_all_products()
     known = load_known_ids()
+    known_sites = {kid.split(":", 1)[0] for kid in known}
+    unseeded = {p["site"] for p in products} - known_sites
+    seed_ids = {p["id"] for p in products if p["site"] in unseeded}
+    if seed_ids:
+        log.info("Seeding %d product(s) from new site(s): %s", len(seed_ids), sorted(unseeded))
+        known |= seed_ids
     new = [p for p in products if p["id"] not in known]
     if new:
         log.info("Found %d new product(s): %s", len(new), [p["title"] for p in new])
         notify(new)
-        save_known_ids(known | {p["id"] for p in new})
+        known |= {p["id"] for p in new}
     else:
         log.info("No new products found.")
+    if seed_ids or new:
+        save_known_ids(known)
     return new
 
 
