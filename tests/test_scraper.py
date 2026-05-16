@@ -86,8 +86,15 @@ def test_homepage_site_returns_empty_on_failure():
     assert products == []
 
 
+def _product_passing_filter(site):
+    p = dict(SAMPLE_PRODUCT)
+    if site.get("vendor_filter"):
+        p["vendor"] = site["vendor_filter"]
+    return p
+
+
 def test_fetch_all_products_covers_both_sites():
-    shopify_responses = [_mock_shopify_response([SAMPLE_PRODUCT]) for _ in SHOPIFY_SITES]
+    shopify_responses = [_mock_shopify_response([_product_passing_filter(s)]) for s in SHOPIFY_SITES]
     html = '<a href="/hoodie">Hoodie</a>'
     homepage_responses = []
     for _ in HOMEPAGE_SITES:
@@ -101,3 +108,22 @@ def test_fetch_all_products_covers_both_sites():
         assert site["name"] in sites
     for site in HOMEPAGE_SITES:
         assert site["name"] in sites
+
+
+def test_shopify_site_applies_vendor_filter():
+    site = {
+        "name": "Filtered",
+        "shopify_url": "https://example.com/products.json",
+        "fallback_url": "https://example.com/all",
+        "base_url": "https://example.com",
+        "vendor_filter": "BALENCIAGA",
+    }
+    products = [
+        {"id": 1, "handle": "bal-shoe", "title": "Bal Shoe", "vendor": "BALENCIAGA", "variants": [], "images": []},
+        {"id": 2, "handle": "nike-shoe", "title": "Nike Shoe", "vendor": "NIKE", "variants": [], "images": []},
+        {"id": 3, "handle": "bal-bag", "title": "Bal Bag", "vendor": "balenciaga", "variants": [], "images": []},
+    ]
+    with patch("scraper.requests.get", return_value=_mock_shopify_response(products)):
+        results = _fetch_shopify_site(site)
+    handles = {p["handle"] for p in results}
+    assert handles == {"bal-shoe", "bal-bag"}

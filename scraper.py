@@ -20,6 +20,13 @@ SHOPIFY_SITES = [
         "fallback_url": "https://lukes.store/collections/newest-items?usf_take=56",
         "base_url": "https://lukes.store",
     },
+    {
+        "name": "2nd Street USA (Balenciaga)",
+        "shopify_url": "https://ec.2ndstreetusa.com/products.json?limit=250",
+        "fallback_url": "https://ec.2ndstreetusa.com/pages/search-results-page?q=balenciaga&sort_by=created",
+        "base_url": "https://ec.2ndstreetusa.com",
+        "vendor_filter": "BALENCIAGA",
+    },
 ]
 
 # Homepage-monitored sites: new drops appear as new links on the homepage
@@ -42,9 +49,13 @@ def fetch_all_products() -> list[dict]:
 
 
 def _fetch_shopify_site(site: dict) -> list[dict]:
+    vendor_filter = (site.get("vendor_filter") or "").upper()
     try:
         r = requests.get(site["shopify_url"], timeout=10, headers=HEADERS)
         if r.status_code == 200:
+            products = r.json().get("products", [])
+            if vendor_filter:
+                products = [p for p in products if (p.get("vendor") or "").upper() == vendor_filter]
             return [
                 {
                     "id": f"{site['name']}:{p['id']}",
@@ -55,10 +66,13 @@ def _fetch_shopify_site(site: dict) -> list[dict]:
                     "url": f"{site['base_url']}/products/{p['handle']}",
                     "site": site["name"],
                 }
-                for p in r.json().get("products", [])
+                for p in products
             ]
     except Exception as e:
         log.debug("Could not fetch Shopify JSON for %s: %s", site["name"], e)
+    if vendor_filter:
+        log.warning("Could not fetch %s: JSON endpoint failed and HTML fallback cannot apply vendor filter", site["name"])
+        return []
     try:
         return _scrape_shopify_html(site)
     except Exception as e:
