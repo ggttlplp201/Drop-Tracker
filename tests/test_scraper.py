@@ -1,6 +1,14 @@
 from unittest.mock import MagicMock, patch
 
-from scraper import fetch_all_products, _fetch_shopify_site, _fetch_homepage_site, SHOPIFY_SITES, HOMEPAGE_SITES
+from scraper import (
+    fetch_all_products,
+    _fetch_shopify_site,
+    _fetch_homepage_site,
+    _fetch_search_site,
+    SHOPIFY_SITES,
+    HOMEPAGE_SITES,
+    SEARCH_SITES,
+)
 
 
 def _mock_shopify_response(products):
@@ -88,26 +96,87 @@ def test_homepage_site_returns_empty_on_failure():
 
 def _product_passing_filter(site):
     p = dict(SAMPLE_PRODUCT)
-    if site.get("vendor_filter"):
-        p["vendor"] = site["vendor_filter"]
+    vf = site.get("vendor_filter")
+    if isinstance(vf, str):
+        p["vendor"] = vf
+    elif vf:
+        p["vendor"] = vf[0]
     return p
+
+
+def _mock_search_response(products):
+    m = MagicMock()
+    m.status_code = 200
+    m.json.return_value = {"resources": {"results": {"products": products}}}
+    return m
 
 
 def test_fetch_all_products_covers_both_sites():
     shopify_responses = [_mock_shopify_response([_product_passing_filter(s)]) for s in SHOPIFY_SITES]
+    search_responses = [
+        _mock_search_response([{
+            "id": 999,
+            "handle": "search-item",
+            "title": "Search Item",
+            "price": "10.00",
+            "image": "https://example.com/img.jpg",
+            "url": "/products/search-item",
+            "vendor": "TestVendor",
+        }])
+        for _ in SEARCH_SITES
+    ]
     html = '<a href="/hoodie">Hoodie</a>'
     homepage_responses = []
     for _ in HOMEPAGE_SITES:
         m = MagicMock()
         m.text = html
         homepage_responses.append(m)
-    with patch("scraper.requests.get", side_effect=shopify_responses + homepage_responses):
+    with patch("scraper.requests.get", side_effect=shopify_responses + search_responses + homepage_responses):
         products = fetch_all_products()
     sites = {p["site"] for p in products}
     for site in SHOPIFY_SITES:
         assert site["name"] in sites
+    for site in SEARCH_SITES:
+        assert site["name"] in sites
     for site in HOMEPAGE_SITES:
         assert site["name"] in sites
+
+
+def test_search_site_normalizes_suggest_response():
+    site = {
+        "name": "Sacai",
+        "search_url": "https://example.com/search/suggest.json?q=sacai",
+        "base_url": "https://example.com",
+    }
+    raw = [{
+        "id": 42,
+        "handle": "abc",
+        "title": "Sacai Jacket",
+        "price": "199.00",
+        "image": "https://example.com/img.jpg",
+        "url": "/products/abc?_pos=1&_psq=sacai",
+        "vendor": "Sacai",
+    }]
+    with patch("scraper.requests.get", return_value=_mock_search_response(raw)):
+        results = _fetch_search_site(site)
+    assert len(results) == 1
+    p = results[0]
+    assert p["id"] == "Sacai:42"
+    assert p["title"] == "Sacai Jacket"
+    assert p["price"] == "199.00"
+    assert p["image_url"] == "https://example.com/img.jpg"
+    assert p["url"] == "https://example.com/products/abc"
+    assert p["site"] == "Sacai"
+
+
+def test_search_site_returns_empty_on_failure():
+    site = {
+        "name": "Sacai",
+        "search_url": "https://example.com/search/suggest.json?q=sacai",
+        "base_url": "https://example.com",
+    }
+    with patch("scraper.requests.get", side_effect=Exception("network error")):
+        assert _fetch_search_site(site) == []
 
 
 def test_shopify_site_applies_vendor_filter():
@@ -127,3 +196,21 @@ def test_shopify_site_applies_vendor_filter():
         results = _fetch_shopify_site(site)
     handles = {p["handle"] for p in results}
     assert handles == {"bal-shoe", "bal-bag"}
+
+
+def test_shopify_site_vendor_filter_accepts_list():
+    site = {
+        "name": "Junya",
+        "shopify_url": "https://example.com/products.json",
+        "fallback_url": "https://example.com/all",
+        "base_url": "https://example.com",
+        "vendor_filter": ["JUNYA WATANABE COMME des GARCONS", "JUNYA WATANABE COMME des GARCONS MAN"],
+    }
+    products = [
+        {"id": 1, "handle": "j1", "title": "J1", "vendor": "JUNYA WATANABE COMME des GARCONS", "variants": [], "images": []},
+        {"id": 2, "handle": "j2", "title": "J2", "vendor": "JUNYA WATANABE COMME des GARCONS MAN", "variants": [], "images": []},
+        {"id": 3, "handle": "x",  "title": "X",  "vendor": "NIKE", "variants": [], "images": []},
+    ]
+    with patch("scraper.requests.get", return_value=_mock_shopify_response(products)):
+        results = _fetch_shopify_site(site)
+    assert {p["handle"] for p in results} == {"j1", "j2"}

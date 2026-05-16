@@ -27,6 +27,42 @@ SHOPIFY_SITES = [
         "base_url": "https://ec.2ndstreetusa.com",
         "vendor_filter": "BALENCIAGA",
     },
+    {
+        "name": "2nd Street USA (Junya Watanabe)",
+        "shopify_url": "https://ec.2ndstreetusa.com/collections/comme-des-garcons-1/products.json?limit=250",
+        "fallback_url": "https://ec.2ndstreetusa.com/pages/search-results-page?q=junya%20watanabe",
+        "base_url": "https://ec.2ndstreetusa.com",
+        "vendor_filter": ["JUNYA WATANABE COMME des GARCONS", "JUNYA WATANABE COMME des GARCONS MAN"],
+    },
+    {
+        "name": "2nd Street USA (Yohji Yamamoto)",
+        "shopify_url": "https://ec.2ndstreetusa.com/collections/yohji-yamamoto/products.json?limit=250",
+        "fallback_url": "https://ec.2ndstreetusa.com/pages/search-results-page?q=yohji%20yamamoto",
+        "base_url": "https://ec.2ndstreetusa.com",
+        "vendor_filter": [
+            "YOHJI YAMAMOTO",
+            "B Yohji Yamamoto",
+            "yohji yamamoto POUR HOMME",
+            "Yohji Yamamoto D'URBAN A.A.R",
+        ],
+    },
+    {
+        "name": "2nd Street USA (Maison Margiela)",
+        "shopify_url": "https://ec.2ndstreetusa.com/collections/maison-margiela/products.json?limit=250",
+        "fallback_url": "https://ec.2ndstreetusa.com/collections/maison-margiela?sort_by=published",
+        "base_url": "https://ec.2ndstreetusa.com",
+        "vendor_filter": ["Maison Margiela", "Maison Martin Margiela"],
+    },
+]
+
+# Sites tracked via Shopify's /search/suggest.json (used when a brand has no
+# dedicated collection and its items are too sparse in /products.json).
+SEARCH_SITES = [
+    {
+        "name": "2nd Street USA (Sacai)",
+        "search_url": "https://ec.2ndstreetusa.com/search/suggest.json?q=sacai&resources[type]=product&resources[limit]=10",
+        "base_url": "https://ec.2ndstreetusa.com",
+    },
 ]
 
 # Homepage-monitored sites: new drops appear as new links on the homepage
@@ -43,19 +79,27 @@ def fetch_all_products() -> list[dict]:
     results = []
     for site in SHOPIFY_SITES:
         results.extend(_fetch_shopify_site(site))
+    for site in SEARCH_SITES:
+        results.extend(_fetch_search_site(site))
     for site in HOMEPAGE_SITES:
         results.extend(_fetch_homepage_site(site))
     return results
 
 
 def _fetch_shopify_site(site: dict) -> list[dict]:
-    vendor_filter = (site.get("vendor_filter") or "").upper()
+    raw_filter = site.get("vendor_filter")
+    if isinstance(raw_filter, str):
+        vendor_filter = {raw_filter.upper()}
+    elif raw_filter:
+        vendor_filter = {v.upper() for v in raw_filter}
+    else:
+        vendor_filter = set()
     try:
         r = requests.get(site["shopify_url"], timeout=10, headers=HEADERS)
         if r.status_code == 200:
             products = r.json().get("products", [])
             if vendor_filter:
-                products = [p for p in products if (p.get("vendor") or "").upper() == vendor_filter]
+                products = [p for p in products if (p.get("vendor") or "").upper() in vendor_filter]
             return [
                 {
                     "id": f"{site['name']}:{p['id']}",
@@ -102,6 +146,28 @@ def _scrape_shopify_html(site: dict) -> list[dict]:
             "site": site["name"],
         })
     return products
+
+
+def _fetch_search_site(site: dict) -> list[dict]:
+    try:
+        r = requests.get(site["search_url"], timeout=10, headers=HEADERS)
+        r.raise_for_status()
+        products = r.json().get("resources", {}).get("results", {}).get("products", [])
+        return [
+            {
+                "id": f"{site['name']}:{p['id']}",
+                "handle": p.get("handle"),
+                "title": p.get("title"),
+                "price": p.get("price"),
+                "image_url": p.get("image") or p.get("featured_image"),
+                "url": f"{site['base_url']}{p['url'].split('?')[0]}" if p.get("url") else None,
+                "site": site["name"],
+            }
+            for p in products
+        ]
+    except Exception as e:
+        log.warning("Could not fetch %s: %s", site["name"], e)
+        return []
 
 
 def _fetch_homepage_site(site: dict) -> list[dict]:
