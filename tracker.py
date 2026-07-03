@@ -4,11 +4,13 @@ import time
 
 from dotenv import load_dotenv
 
-from notifier import notify
-from scraper import fetch_all_products
-from state import load_known_ids, save_known_ids
-
+# Load .env before importing notifier: notifier reads webhook env vars at import
+# time, so the .env must be applied first (otherwise they resolve to None).
 load_dotenv()
+
+from notifier import notify  # noqa: E402
+from scraper import fetch_all_products  # noqa: E402
+from state import load_known_ids, save_known_ids  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
